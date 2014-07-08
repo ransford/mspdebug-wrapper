@@ -38,7 +38,7 @@ def run_mspdebug (simulator=False):
         cmd = 'mspdebug sim'
     else:
         cmd = 'mspdebug -j tilib'
-    print 'Starting mspdebug'
+    logger.debug('Starting mspdebug')
     proc = subprocess.Popen(cmd,
             shell=True,
             stdin=subprocess.PIPE,
@@ -49,17 +49,17 @@ def run_mspdebug (simulator=False):
         while True:
             foo = proc.stdout.readline().strip()
             if foo.startswith('( '):
-                print foo
+                logger.debug(foo)
             if foo == 'Press Ctrl+D to quit.':
-                print 'Got mspdebug prompt'
+                logger.debug('Got mspdebug prompt')
                 break
     except KeyboardInterrupt:
         pass
     finally:
-        print 'Exiting...'
+        logger.debug('Exiting mspdebug...')
         proc.stdin.write('exit\n')
         proc.wait()
-        print 'mspdebug process exited cleanly.'
+        logger.info('mspdebug process exited cleanly.')
 
 def remove_dotfile ():
     os.unlink(DOTFILE)
