@@ -5,7 +5,11 @@ hardware debugger) and gather its results.
 
 ### Usage
 
-    $ python mspdebug_wrapper.py
+    $ msp430-objdump myfile.elf
+    ...
+        446c:       81 4f 02 00     mov     r15,    2(r1)   ;0x0002(r1)
+
+    $ python mspdebug_wrapper.py -b 0x446c myfile.elf
 
 ### Dependencies
 Lots, including:

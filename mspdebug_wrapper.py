@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 logger.propagate = False
 
 def parse_args ():
-    parser = argparse.ArgumentParser(description='MSPDebug wrapper')
+    parser = argparse.ArgumentParser(description='mspdebug wrapper')
+    parser.add_argument('executable', help='msp430 executable')
     parser.add_argument('-s', '--simulator', action='store_true',
             help='use simulator')
     parser.add_argument('-b', '--breakpoint', default='0xffff',
@@ -24,8 +25,10 @@ def parse_args ():
             help='show debugging output')
     return parser.parse_args()
 
-def write_dotfile (breakaddr):
+def write_dotfile (breakaddr, executable):
     cmds = (
+            'load {}'.format(executable),
+            'sym import {}'.format(executable),
             'delbreak', # clear all breakpoints
             'setbreak {}'.format(breakaddr),
             'run'
@@ -51,7 +54,7 @@ def run_mspdebug (simulator=False):
         while True:
             foo = proc.stdout.readline().strip()
             if foo.startswith('( '):
-                logger.debug(foo)
+                logger.info(foo)
             if foo == 'Press Ctrl+D to quit.':
                 logger.debug('Got mspdebug prompt')
                 break
@@ -63,7 +66,7 @@ def run_mspdebug (simulator=False):
         time.sleep(0.2)
     finally:
         proc.wait()
-        logger.info('mspdebug process exited cleanly.')
+        logger.debug('mspdebug process exited cleanly.')
 
 def remove_dotfile ():
     os.unlink(DOTFILE)
@@ -89,6 +92,6 @@ if __name__ == '__main__':
         libpath.append(args.library_path)
         os.environ['LD_LIBRARY_PATH'] = os.pathsep.join(libpath)
 
-    write_dotfile(args.breakpoint)
+    write_dotfile(args.breakpoint, args.executable)
     run_mspdebug(args.simulator)
     remove_dotfile()
