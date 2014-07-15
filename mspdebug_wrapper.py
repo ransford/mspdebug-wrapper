@@ -4,6 +4,8 @@ import argparse
 import logging
 import os, os.path
 import subprocess
+import signal
+import time
 
 DOTFILE = '.mspdebug'
 
@@ -53,11 +55,13 @@ def run_mspdebug (simulator=False):
             if foo == 'Press Ctrl+D to quit.':
                 logger.debug('Got mspdebug prompt')
                 break
-    except KeyboardInterrupt:
-        pass
-    finally:
         logger.debug('Exiting mspdebug...')
         proc.stdin.write('exit\n')
+    except KeyboardInterrupt:
+        logger.critical('caught interrupt')
+        proc.send_signal(signal.SIGINT)
+        time.sleep(0.2)
+    finally:
         proc.wait()
         logger.info('mspdebug process exited cleanly.')
 
