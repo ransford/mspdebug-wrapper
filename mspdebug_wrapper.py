@@ -27,8 +27,8 @@ def parse_args ():
 
 def write_dotfile (breakaddr, executable):
     cmds = (
-            'load {}'.format(executable),
             'sym import {}'.format(executable),
+            'prog {}'.format(executable),
             'delbreak', # clear all breakpoints
             'setbreak {}'.format(breakaddr),
             'run'
@@ -42,8 +42,8 @@ def run_mspdebug (simulator=False):
     if simulator:
         cmd = 'mspdebug sim'
     else:
-        cmd = 'mspdebug -j tilib'
-    logger.debug('Starting mspdebug')
+        cmd = 'mspdebug tilib'
+    logger.debug('Starting {}'.format(cmd))
     proc = subprocess.Popen(cmd,
             shell=True,
             stdin=subprocess.PIPE,
@@ -53,6 +53,7 @@ def run_mspdebug (simulator=False):
         # read until a breakpoint reached.  catch register values
         while True:
             foo = proc.stdout.readline().strip()
+            logger.debug('LINE: [{}]'.format(foo))
             if foo.startswith('( '):
                 logger.info(foo)
             if foo == 'Press Ctrl+D to quit.':
@@ -61,7 +62,7 @@ def run_mspdebug (simulator=False):
         logger.debug('Exiting mspdebug...')
         proc.stdin.write('exit\n')
     except KeyboardInterrupt:
-        logger.critical('caught interrupt')
+        logger.critical('caught interrupt; sending SIGINT to mspdebug')
         proc.send_signal(signal.SIGINT)
         time.sleep(0.2)
     finally:
