@@ -3,8 +3,10 @@
 import argparse
 import logging
 import os, os.path
-import subprocess
+import select
 import signal
+import subprocess
+import sys
 import time
 
 DOTFILE = '.mspdebug'
@@ -18,11 +20,13 @@ def parse_args ():
     parser.add_argument('-s', '--simulator', action='store_true',
             help='use simulator')
     parser.add_argument('-b', '--breakpoint', default='0xffff',
-            help='breakpoint that means program has exited (default 0xffff)')
+            help='breakpoint that means program is done (default 0xffff)')
     parser.add_argument('-L', '--library-path',
             help='directory that contains libmsp430.so')
     parser.add_argument('-d', '--debug', action='store_true',
             help='show debugging output')
+    parser.add_argument('-o', '--outfile', type=argparse.FileType('w'),
+            default=sys.stderr, help='output file to store results')
     return parser.parse_args()
 
 def write_dotfile (breakaddr, executable):
@@ -37,7 +41,7 @@ def write_dotfile (breakaddr, executable):
         dotfile.write('\n'.join(cmds))
         dotfile.write('\n')
 
-def run_mspdebug (simulator=False):
+def run_mspdebug (simulator=False, outputfile=sys.stderr):
     # LD_LIBRARY_PATH=/usr/local/lib mspdebug -j tilib
     if simulator:
         cmd = 'mspdebug sim'
@@ -49,18 +53,37 @@ def run_mspdebug (simulator=False):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
+
     try:
         # read until a breakpoint reached.  catch register values
-        while True:
-            foo = proc.stdout.readline().strip()
-            logger.debug('LINE: [{}]'.format(foo))
-            if foo.startswith('( '):
-                logger.info(foo)
-            if foo == 'Press Ctrl+D to quit.':
-                logger.debug('Got mspdebug prompt')
+        polite = True
+        bail = False
+        while not bail:
+            reads = [proc.stdout.fileno(), proc.stderr.fileno()]
+            ret = select.select(reads, [], [])
+            for fd in ret[0]:
+                if fd == proc.stdout.fileno():
+                    line = proc.stdout.readline()
+                    line = line.strip()
+                    logger.debug('stdout: [{}]'.format(line))
+                    if line.startswith('( '):
+                        outputfile.write('{}\n'.format(line))
+                    if line == 'Press Ctrl+D to quit.':
+                        logger.debug('Got mspdebug prompt')
+                        bail = True
+                        break
+                elif fd == proc.stderr.fileno():
+                    stderr = proc.stderr.readline().strip()
+                    logger.error('mspdebug: {}'.format(stderr))
+                    polite = False
+                    bail = True
+                    break
+
+            if proc.poll() != None:
                 break
-        logger.debug('Exiting mspdebug...')
-        proc.stdin.write('exit\n')
+        if polite:
+            logger.debug('Exiting mspdebug...')
+            proc.stdin.write('exit\n')
     except KeyboardInterrupt:
         logger.critical('caught interrupt; sending SIGINT to mspdebug')
         proc.send_signal(signal.SIGINT)
@@ -94,5 +117,5 @@ if __name__ == '__main__':
         os.environ['LD_LIBRARY_PATH'] = os.pathsep.join(libpath)
 
     write_dotfile(args.breakpoint, args.executable)
-    run_mspdebug(args.simulator)
+    run_mspdebug(args.simulator, args.outfile)
     remove_dotfile()
