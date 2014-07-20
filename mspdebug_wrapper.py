@@ -26,7 +26,8 @@ def parse_args ():
     parser.add_argument('-d', '--debug', action='store_true',
             help='show debugging output')
     parser.add_argument('-o', '--outfile', type=argparse.FileType('w'),
-            default=sys.stderr, help='output file to store results')
+            metavar='FILE', default=sys.stderr,
+            help='dump registers on completion')
     return parser.parse_args()
 
 def write_dotfile (breakaddr, executable):
