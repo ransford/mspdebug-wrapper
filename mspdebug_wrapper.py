@@ -40,6 +40,8 @@ def parse_args ():
     parser.add_argument('-o', '--outfile', type=argparse.FileType('w'),
             metavar='FILE', default=sys.stderr,
             help='dump registers on completion')
+    parser.add_argument('-T', '--timing-file', type=argparse.FileType('w'),
+            metavar='FILE', help='dump runtime on completion')
     return parser.parse_args()
 
 def write_dotfile (args):
@@ -152,5 +154,10 @@ if __name__ == '__main__':
         os.environ['LD_LIBRARY_PATH'] = os.pathsep.join(libpath)
 
     write_dotfile(args) or sys.exit(1)
+    if args.timing_file:
+        starttime = time.time()
     run_mspdebug(args)
+    if args.timing_file:
+        endtime = time.time() - starttime
+        args.timing_file.write('{}\n'.format(endtime))
     remove_dotfile(args)
