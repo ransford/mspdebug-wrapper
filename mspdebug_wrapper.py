@@ -1,4 +1,10 @@
 #!/usr/bin/python
+#
+# Wrapper for mspdebug that runs an MSP430 program to a breakpoint, then dumps
+# its output to a file or stderr.
+#
+# TODO: support more than tilib
+#
 
 import argparse
 import logging
@@ -19,6 +25,12 @@ def parse_args ():
     parser.add_argument('executable', help='msp430 executable')
     parser.add_argument('-s', '--simulator', action='store_true',
             help='use simulator')
+    parser.add_argument('-H', '--host-ssh', type=str,
+            default='host to connect to via ssh')
+    parser.add_argument('-m', '--mspdebug', type=str, default='mspdebug',
+            help='how to invoke mspdebug (default \'mspdebug\')')
+    parser.add_argument('-c', '--command', type=str, default='tilib',
+            help='mspdebug command (default \'tilib\')')
     parser.add_argument('-b', '--breakpoint', default='0xffff',
             help='breakpoint that means program is done (default 0xffff)')
     parser.add_argument('-L', '--library-path',
@@ -30,24 +42,42 @@ def parse_args ():
             help='dump registers on completion')
     return parser.parse_args()
 
-def write_dotfile (breakaddr, executable):
+def write_dotfile (args):
+    executable = args.executable
+    if args.host_ssh:
+        executable = os.path.basename(executable)
     cmds = (
             'sym import {}'.format(executable),
             'prog {}'.format(executable),
             'delbreak', # clear all breakpoints
-            'setbreak {}'.format(breakaddr),
+            'setbreak {}'.format(args.breakpoint),
             'run'
            )
     with open(DOTFILE, 'w') as dotfile:
         dotfile.write('\n'.join(cmds))
         dotfile.write('\n')
+    if args.host_ssh:
+        scpcmd = ['scp', DOTFILE, args.host_ssh + ':']
+        logger.debug('Calling {}'.format(' '.join(scpcmd)))
+        rc = subprocess.call(scpcmd)
+        return (rc == 0)
 
-def run_mspdebug (simulator=False, outputfile=sys.stderr):
-    # LD_LIBRARY_PATH=/usr/local/lib mspdebug -j tilib
-    if simulator:
-        cmd = 'mspdebug sim'
+def run_mspdebug (args):
+    outputfile = args.outfile and args.outfile or sys.stderr
+
+    if args.simulator:
+        cmd = '{} sim'.format(args.mspdebug)
     else:
-        cmd = 'mspdebug tilib'
+        cmd = '{} tilib'.format(args.mspdebug)
+    if args.host_ssh:
+        cmd = 'ssh {} {}'.format(args.host_ssh, cmd)
+
+        # copy the executable to the remote host
+        scpcmd = ['scp', args.executable, args.host_ssh + ':']
+        logger.debug('Calling {}'.format(' '.join(scpcmd)))
+        rc = subprocess.call(scpcmd)
+        assert rc == 0
+
     logger.debug('Starting {}'.format(cmd))
     proc = subprocess.Popen(cmd,
             shell=True,
@@ -93,7 +123,11 @@ def run_mspdebug (simulator=False, outputfile=sys.stderr):
         proc.wait()
         logger.debug('mspdebug process exited cleanly.')
 
-def remove_dotfile ():
+def remove_dotfile (args):
+    if args.host_ssh:
+        sshcmd = ['ssh', args.host_ssh, 'rm', DOTFILE]
+        logger.debug('Calling {}'.format(sshcmd))
+        rc = subprocess.call(sshcmd)
     os.unlink(DOTFILE)
 
 if __name__ == '__main__':
@@ -117,6 +151,6 @@ if __name__ == '__main__':
         libpath.append(args.library_path)
         os.environ['LD_LIBRARY_PATH'] = os.pathsep.join(libpath)
 
-    write_dotfile(args.breakpoint, args.executable)
-    run_mspdebug(args.simulator, args.outfile)
-    remove_dotfile()
+    write_dotfile(args) or sys.exit(1)
+    run_mspdebug(args)
+    remove_dotfile(args)
