@@ -4,6 +4,7 @@
 # its output to a file or stderr.
 #
 # TODO: support more than tilib
+# TODO: refine mspdebug process interaction to catch mspdebug prompt
 #
 
 import argparse
@@ -53,7 +54,6 @@ def write_dotfile (args):
             'prog {}'.format(executable),
             'delbreak', # clear all breakpoints
             'setbreak {}'.format(args.breakpoint),
-            'run'
            )
     with open(DOTFILE, 'w') as dotfile:
         dotfile.write('\n'.join(cmds))
@@ -87,10 +87,13 @@ def run_mspdebug (args):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
 
+    runtime = None
     try:
         # read until a breakpoint reached.  catch register values
         polite = True
         bail = False
+        t_start = None
+        running = False
         while not bail:
             reads = [proc.stdout.fileno(), proc.stderr.fileno()]
             ret = select.select(reads, [], [])
@@ -99,12 +102,30 @@ def run_mspdebug (args):
                     line = proc.stdout.readline()
                     line = line.strip()
                     logger.debug('stdout: [{}]'.format(line))
-                    if line.startswith('( '):
+
+                    if not line:
+                        proc.stdin.write('\n')
+
+                    elif line.startswith('(mspdebug)'):
+                        logger.debug('Got mspdebug prompt.')
+                        if not running:
+                            logger.debug('Running...')
+                            proc.stdin.write('run\n')
+                        else:
+                            logger.debug('Done running.')
+                            runtime = time.time() - t_start
+                            bail = True
+                            break
+
+                    elif line.startswith('Running.'):
+                        logger.debug('Got "Running."')
+                        running = True
+                        t_start = time.time()
+
+                    elif line.startswith('( '):
+
                         outputfile.write('{}\n'.format(line))
-                    if line == 'Press Ctrl+D to quit.':
-                        logger.debug('Got mspdebug prompt')
-                        bail = True
-                        break
+
                 elif fd == proc.stderr.fileno():
                     stderr = proc.stderr.readline().strip()
                     logger.error('mspdebug: {}'.format(stderr))
@@ -124,6 +145,7 @@ def run_mspdebug (args):
     finally:
         proc.wait()
         logger.debug('mspdebug process exited cleanly.')
+        return runtime
 
 def remove_dotfile (args):
     if args.host_ssh:
@@ -154,10 +176,8 @@ if __name__ == '__main__':
         os.environ['LD_LIBRARY_PATH'] = os.pathsep.join(libpath)
 
     write_dotfile(args) or sys.exit(1)
+    runtime = run_mspdebug(args)
+    logger.debug('run_mspdebug() completed in {} seconds'.format(runtime))
     if args.timing_file:
-        starttime = time.time()
-    run_mspdebug(args)
-    if args.timing_file:
-        endtime = time.time() - starttime
-        args.timing_file.write('{}\n'.format(endtime))
+        args.timing_file.write('{}\n'.format(runtime))
     remove_dotfile(args)
